@@ -8,6 +8,7 @@
 #include <iostream>
 #include <string>
 #include <array>
+#include <stack>
 
 ///
 /// \brief init
@@ -56,9 +57,9 @@ Graph* init(std::string filename)
                 edges++;
                 if (tail>n || head>n)
                     std::cout<<"ERROR: more nodes than expected!"<<std::endl;
-                resG->add_edge(tail - 1, head - 1, edge_id, weight);
+                resG->add_edge(tail, head, edge_id, weight);
                 edge_id++;
-                if (edges % 10000 == 0)
+                if (edges % 100000 == 0)
                     std::cout << edges << std::endl;
                 break;
             }
@@ -66,7 +67,7 @@ Graph* init(std::string filename)
                 break;
         }
     }
-    std::cout << "Parsing done!" << std::endl;
+    std::cout << "Parsing done! " << edge_id << std::endl;
     return resG;
 }
 
@@ -79,22 +80,72 @@ Graph* init(std::string filename)
 ///
 void print_solution(Graph* resG, std::vector<std::vector<int>> path_set, const char *outfile_name)
 {
+    FILE *fp = fopen(outfile_name, "w");
     std::vector<bool> edge_visited_flag(resG->num_edges_);
     for (size_t i = 0; i < path_set.size(); i++) {
         for (size_t j = 0; j < path_set[i].size() - 1; j++) {
             int tail = path_set[i][j];
             int head = path_set[i][j + 1];
+            // fprintf(fp, "%d %d ", tail, head);
             int edge_idx = resG->node_id2edge_id[Graph::node_key(tail, head)];
             edge_visited_flag[edge_idx] = !edge_visited_flag[edge_idx];
         }
+        // fprintf(fp, "\n");
     }
-    FILE *fp = fopen(outfile_name, "w");
+    std::vector<std::vector<int>> flow_dict; 
+    flow_dict.resize(resG->num_nodes_);
+
     for (int i = 0; i < resG->num_edges_; i++) {
-        if (edge_visited_flag[i])
-            fprintf(fp, "f %d %d 1\n", resG->edge_tail_head[i].first + 1, resG->edge_tail_head[i].second + 1);
-        else
-            fprintf(fp, "f %d %d 0\n", resG->edge_tail_head[i].first + 1, resG->edge_tail_head[i].second + 1);
+        if (edge_visited_flag[i]) {
+            int head = resG->edge_tail_head[i].first;
+            int tail = resG->edge_tail_head[i].second;
+            flow_dict[head].push_back(tail);
+            // fprintf(fp, "1\n");
+        }
+        else {
+            // fprintf(fp, "f %d %d 0\n", resG->edge_tail_head[i].first + 1, resG->edge_tail_head[i].second + 1);
+            // fprintf(fp, "0\n");
+        }
     }
+
+    std::stack<int> node_stack;
+    node_stack.push(resG->src_id_);
+
+    std::map<int, int> parent;
+    parent[resG->src_id_] = -1;
+
+    std::vector<std::vector<int>> tracks;
+
+    while (!node_stack.empty()) {
+        int current = node_stack.top();
+        node_stack.pop();
+
+        if (current == resG->sink_id_) {
+            std::vector<int> path;
+            int curr = current;
+            while (curr != -1) {
+                path.push_back(curr);
+                curr = parent[curr];
+            }
+            std::reverse(path.begin(), path.end());
+            tracks.push_back(path);
+        }
+
+        for (int &child : flow_dict[current]) {
+            parent[child] = current;
+            node_stack.push(child);
+        }
+    }
+
+    std::reverse(tracks.begin(), tracks.end());
+
+    for (auto &path : tracks) {
+        for (int &node : path) {
+            fprintf(fp, "%d ", node);
+        }
+        fprintf(fp, "\n");
+    }
+
     fclose(fp);
 }
 
@@ -257,8 +308,8 @@ int main(int argc, char *argv[])
            path_cost.size(), cost_sum, path_cost[path_cost.size() - 1]);
 
     /*********write detailed flow to txt********/
-    if (argc > 3) {
-        print_solution(org_graph.get(), path_set, "output.txt");//"output_edge_rm.txt"
+    if (argc > 2) {
+        print_solution(org_graph.get(), path_set, argv[2]);
     }
     return 0;
 }
